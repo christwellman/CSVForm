@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSV to Form</title>
+<!-- Bootstrap CSS -->
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+<style>
+.container {
+  max-width: 800px;
+}
+</style>
+</head>
+<body>
+
+<div class="container mt-5">
+  <h2>CSV to Form</h2>
+  <input type="file" id="csvFileInput" accept=".csv" class="mt-3" />
+  <button type="button" class="btn btn-primary" id="loadCSVButton">Load CSV</button>
+
+  <div id="fieldSelection"></div>
+  <button type="button" class="btn btn-primary" id="generateFormButton">Generate Form</button>
+  
+  <div class="mt-3">
+    <select id="searchField" class="form-control"></select>
+    <input type="text" id="searchTerm" class="form-control mt-2" placeholder="Search term">
+    <button type="button" class="btn btn-primary mt-2" id="searchButton">Search</button>
+  </div>
+  
+  <form id="csvForm" class="mt-3 row">
+    <!-- Dynamic form fields will be inserted here -->
+  </form>
+  
+  <div id="pagination" class="mt-3">
+    <!-- Pagination buttons will be dynamically generated here -->
+  </div>
+</div>
+
+<!-- PapaParse Library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+
+<script>
+let csvData; // Store the parsed CSV data
+let currentPage = 1; // Keep track of the current page
+const recordsPerPage = 1; // Number of records to display per page
+
+window.onload = function() {
+  document.getElementById('loadCSVButton').addEventListener('click', loadCSV);
+  document.getElementById('generateFormButton').addEventListener('click', generateForm);
+  document.getElementById('searchButton').addEventListener('click', searchRecord);
+  
+  function loadCSV() {
+    const fileInput = document.getElementById('csvFileInput');
+    const file = fileInput.files[0];
+
+    Papa.parse(file, {
+      complete: function(results) {
+        csvData = results.data;
+        //console.log('Parsed CSV data:', csvData);
+        //console.log('Total records (including header):', csvData.length);
+        const fieldSelectionDiv = document.getElementById('fieldSelection');
+        fieldSelectionDiv.innerHTML = ''; // Clear the field selection div
+
+        // Assuming the first row of the CSV is headers
+        const headers = csvData[0];
+
+        // Create checkboxes for each header
+        headers.forEach((header, index) => {
+          if (index < 75) { // Limit fields
+            const checkbox = document.createElement('div');
+            checkbox.className = 'form-check form-check-inline';
+
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.className = 'form-check-input';
+            input.id = `checkbox${index}`;
+            input.name = 'fields';
+            input.value = header;
+            input.checked = true; // Set all checkboxes as checked by default
+
+            const label = document.createElement('label');
+            label.className = 'form-check-label';
+            label.setAttribute('for', `checkbox${index}`);
+            label.textContent = header;
+
+            checkbox.appendChild(input);
+            checkbox.appendChild(label);
+            fieldSelectionDiv.appendChild(checkbox);
+          }
+        });
+        
+        // Populate the search field dropdown
+        populateSearchField();
+        
+        // Generate the form starting from the second row
+        currentPage = 1;
+        generateForm();
+        generatePagination();
+      }
+    });
+  }
+
+  function generateForm() {
+    const form = document.getElementById('csvForm');
+    form.innerHTML = ''; // Clear the form
+
+    // Get the selected fields
+    const selectedFields = Array.from(document.querySelectorAll('input[name="fields"]:checked'))
+      .map(checkbox => checkbox.value);
+
+    // Calculate the index of the record to display based on the current page
+    const recordIndex = (currentPage - 1) * recordsPerPage + 1;
+
+    // Use the record at the calculated index for form generation
+    const values = csvData[recordIndex];
+
+    // Create form fields for each selected field
+    selectedFields.forEach((field, index) => {
+      const fieldIndex = csvData[0].indexOf(field);
+
+      const formGroup = document.createElement('div');
+      formGroup.className = 'form-group col-md-6';
+
+      const label = document.createElement('label');
+      label.setAttribute('for', `field${fieldIndex}`);
+      label.textContent = field;
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'form-control';
+      input.id = `field${fieldIndex}`;
+      input.name = field;
+      input.value = values[fieldIndex] || '';
+
+      formGroup.appendChild(label);
+      formGroup.appendChild(input);
+      form.appendChild(formGroup);
+    });
+  }
+  function searchRecord() {
+    const searchField = document.getElementById('searchField').value;
+    const searchTerm = document.getElementById('searchTerm').value.toLowerCase();
+    
+    const fieldIndex = csvData[0].indexOf(searchField);
+    
+    for (let i = 1; i < csvData.length; i++) {
+        const fieldValue = csvData[i][fieldIndex];
+        if (fieldValue && fieldValue.toLowerCase().includes(searchTerm)) {
+        currentPage = Math.ceil(i / recordsPerPage);
+        generateForm();
+        generatePagination();
+        break;
+        }
+    }
+    }
+
+
+  function populateSearchField() {
+    const searchField = document.getElementById('searchField');
+    searchField.innerHTML = ''; // Clear the existing options
+
+    const headers = csvData[0];
+    headers.forEach(header => {
+      const option = document.createElement('option');
+      option.value = header;
+      option.textContent = header;
+      searchField.appendChild(option);
+    });
+  }
+
+  function generatePagination() {
+    const paginationDiv = document.getElementById('pagination');
+    paginationDiv.innerHTML = ''; // Clear the existing pagination
+
+    const totalRecords = csvData.length - 1; // Subtract 1 to exclude the header row
+    const totalPages = Math.ceil(totalRecords / recordsPerPage);
+    //console.log('Total records (excluding header):', totalRecords);
+    //console.log('Total pages:', totalPages);
+
+    // Previous page button
+    const previousPageButton = createPageButton(currentPage - 1, 'Previous');
+    previousPageButton.disabled = currentPage === 1;
+    paginationDiv.appendChild(previousPageButton);
+
+    // Page number buttons
+    const startPage = Math.max(1, currentPage - 7);
+    const endPage = Math.min(totalPages, currentPage + 7);
+
+    if (startPage > 1) {
+        const firstPageButton = createPageButton(1, 1);
+        paginationDiv.appendChild(firstPageButton);
+
+        if (startPage > 2) {
+        const ellipsisButton = createEllipsisButton();
+        paginationDiv.appendChild(ellipsisButton);
+        }
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        const pageButton = createPageButton(i, i);
+        // pageButton.classList.add(i === currentPage ? 'active' : '');
+        if (i === currentPage) {
+            pageButton.classList.add('active');
+        }
+        paginationDiv.appendChild(pageButton);
+    }
+
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+        const ellipsisButton = createEllipsisButton();
+        paginationDiv.appendChild(ellipsisButton);
+        }
+
+        const lastPageButton = createPageButton(totalPages, totalPages);
+        paginationDiv.appendChild(lastPageButton);
+    }
+
+    // Next page button
+    const nextPageButton = createPageButton(currentPage + 1, 'Next');
+    nextPageButton.disabled = currentPage === totalPages;
+    paginationDiv.appendChild(nextPageButton);
+    }
+
+    function createPageButton(pageNumber, label) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-primary ml-1';
+    button.textContent = label;
+    button.addEventListener('click', () => {
+        currentPage = pageNumber;
+        generateForm();
+        generatePagination();
+    });
+    return button;
+    }
+
+    function createEllipsisButton() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-secondary ml-1';
+    button.textContent = '...';
+    button.disabled = true;
+    return button;
+    }
+
+};
+</script>
